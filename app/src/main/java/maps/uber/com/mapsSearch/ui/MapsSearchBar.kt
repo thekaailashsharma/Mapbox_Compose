@@ -4,7 +4,9 @@ package maps.uber.com.mapsSearch.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -72,6 +74,7 @@ import maps.uber.com.ui.theme.textColor
 
 @Composable
 fun MapsSearchBar(
+    text: String,
     mutableText: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
     onTrailingClick: () -> Unit = {},
@@ -82,81 +85,83 @@ fun MapsSearchBar(
     var isCheckingJob: Job? = null // Initialize isCheckingJob
     val addresses = viewModel.addresses.collectAsState()
     val imageState = viewModel.imageState.collectAsState()
+    val sourceLoading = viewModel.searchingSource.collectAsState()
+    val destinationLoading = viewModel.searchingDestination.collectAsState()
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                if (addresses.value.isEmpty()) Color.Transparent else Color(0xFF333232).copy(
-                    alpha = 0.5f
-                )
+                if (addresses.value.isEmpty()) Color.Transparent else Color(0xFF221F1F)
             ),
         horizontalAlignment = Alignment.Start
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(15.dp)
-                .clickable(
-                    interactionSource = MutableInteractionSource(),
-                    indication = null
-                ) {
-                    navController.popBackStack()
-                },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+        AnimatedVisibility(
+            visible = if (text != "Enter Destination Location")
+                (viewModel.destination.value == "") else (viewModel.source.value == ""),
+            enter = slideInHorizontally() + fadeIn(),
+            exit = slideOutHorizontally() + fadeOut(),
         ) {
-            Icon(
-                imageVector = Icons.Filled.ArrowBackIos,
-                contentDescription = "topText",
-                tint = textColor,
-                modifier = Modifier.size(30.dp)
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 5.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextFieldWithIcons(
-                textValue = "Search",
-                placeholder = "Search for a place",
-                icon = Icons.Filled.Search,
-                mutableText = mutableText,
-                keyboardType = KeyboardType.Text,
-                imeAction = ImeAction.Search,
-                onValueChanged = {
-                    viewModel.setImageState(
-                        ApiState.NotStarted
-                    )
-                    onValueChange(it)
-                    if (isCheckingJob?.isActive == true) {
-                        isCheckingJob?.cancel()
-                    }
-                    isCheckingJob = CoroutineScope(Dispatchers.Main).launch {
-                        delay(1000) // Adjust the delay time as needed
-                    }
-                },
-                onSearch = {
-                    viewModel.getAutoComplete(mutableText.text)
-                },
-                contentColor = textColor,
-                containerColor = Color.Black.copy(0.8f),
-                trailingIcon = Icons.Filled.Close,
-                isTrailingVisible = true,
-                onTrailingClick = {
-                    onTrailingClick()
-                },
-                modifier = Modifier,
-            )
-        }
-        if (isChecking && addresses.value.isEmpty()) {
-            LinearProgressIndicator(
-                color = lightText,
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-            )
+                    .padding(horizontal = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextFieldWithIcons(
+                    textValue = "Search",
+                    placeholder = text,
+                    icon = Icons.Filled.Search,
+                    mutableText = mutableText,
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Search,
+                    onValueChanged = {
+                        viewModel.setImageState(
+                            ApiState.NotStarted
+                        )
+                        onValueChange(it)
+                        if (isCheckingJob?.isActive == true) {
+                            isCheckingJob?.cancel()
+                        }
+                        isCheckingJob = CoroutineScope(Dispatchers.Main).launch {
+                            delay(1000) // Adjust the delay time as needed
+                        }
+                    },
+                    onSearch = {
+                        viewModel.getAutoComplete(mutableText.text)
+                    },
+                    contentColor = textColor,
+                    containerColor = Color.Black,
+                    trailingIcon = Icons.Filled.Close,
+                    isTrailingVisible = true,
+                    onTrailingClick = {
+                        onTrailingClick()
+                    },
+                    modifier = Modifier,
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = if (text != "Enter Destination Location")
+                (viewModel.destination.value != "") else (viewModel.source.value != ""),
+            enter = slideInHorizontally() + fadeIn(),
+            exit = slideOutHorizontally() + fadeOut(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (text == "Enter Destination Location") viewModel.destination
+                        .value else viewModel.source.value,
+                    color = textColor,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp)
+                )
+            }
         }
         AnimatedVisibility(
             visible = addresses.value.isNotEmpty(),
@@ -174,7 +179,11 @@ fun MapsSearchBar(
                                 interactionSource = MutableInteractionSource(),
                                 indication = null
                             ) {
-                                viewModel.searchPlace(index)
+                                if (text == "Enter Destination Location") {
+                                    viewModel.searchDestination(index)
+                                } else {
+                                    viewModel.searchPlace(index)
+                                }
                             },
                         colors = CardDefaults.cardColors(
                             containerColor = Color.Transparent
@@ -206,17 +215,6 @@ fun MapsSearchBar(
                     }
                 }
             }
-        }
-        AnimatedVisibility(
-            visible = imageState.value is ApiState.ReceivedPhoto,
-            enter = slideInVertically(initialOffsetY = {
-                it
-            }),
-            exit = slideOutVertically(targetOffsetY = {
-                it
-            })
-        ) {
-
         }
     }
 }
@@ -309,7 +307,8 @@ fun TextFieldWithIcons(
             unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent,
             cursorColor = textColor,
-            placeholderColor = textColor
+            placeholderColor = textColor,
+            containerColor = containerColor
         ),
         enabled = isEnabled,
         shape = RoundedCornerShape(20.dp),

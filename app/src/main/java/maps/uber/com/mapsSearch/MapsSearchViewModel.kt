@@ -7,6 +7,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mapbox.geojson.Geometry
+import com.mapbox.geojson.Point
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,8 +43,17 @@ class MapsSearchViewModel @Inject constructor(
     private val _imageState = MutableStateFlow<ApiState>(ApiState.NotStarted)
     val imageState: StateFlow<ApiState> = _imageState.asStateFlow()
 
+    private val _searchingSource = MutableStateFlow(false)
+    val searchingSource: StateFlow<Boolean> = _searchingSource.asStateFlow()
+
+    private val _searchingDestination = MutableStateFlow(false)
+    val searchingDestination: StateFlow<Boolean> = _searchingDestination.asStateFlow()
+
     private val _query = MutableStateFlow(TextFieldValue())
     val query: StateFlow<TextFieldValue> = _query.asStateFlow()
+
+    private val _queryDestination = MutableStateFlow(TextFieldValue())
+    val queryDestination: StateFlow<TextFieldValue> = _queryDestination.asStateFlow()
 
     private val _addresses = MutableStateFlow<List<Address>>(listOf())
     val addresses: StateFlow<List<Address>> = _addresses.asStateFlow()
@@ -64,7 +74,10 @@ class MapsSearchViewModel @Inject constructor(
     var isClicked = mutableStateOf(false)
     var latitude =  mutableDoubleStateOf(20.5937)
     var longitude =mutableDoubleStateOf(78.9629)
-
+    var source = mutableStateOf("")
+    var sourcePoint = mutableStateOf<Point?>(null)
+    var destination = mutableStateOf("")
+    var destinationPoint = mutableStateOf<Point?>(null)
 
     fun setImageState(state: ApiState) {
         _imageState.value = state
@@ -74,6 +87,8 @@ class MapsSearchViewModel @Inject constructor(
     fun setQuery(query: TextFieldValue) {
         _query.value = query
         viewModelScope.launch {
+            _imageState.value = ApiState.SearchingSource
+            _searchingSource.value = false
             _query.debounce(2400)
                 .filter { query ->
                     if (query.text.isEmpty() && !_isChecking.value) {
@@ -103,6 +118,57 @@ class MapsSearchViewModel @Inject constructor(
                 .collect { result ->
                     if (result.isNotEmpty()) {
                         getAutoComplete(result)
+                        _imageState.value = ApiState.NotStarted
+                        _searchingSource.value = true
+                    }
+                }
+
+
+//                _query.debounce(800).collectLatest {
+//                    if (_imageState.value !is ApiState.ReceivedPhoto) {
+//                    getAutoComplete(it.text)
+//                }
+//            }
+        }
+    }
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    fun setDestinationQuery(query: TextFieldValue) {
+        _queryDestination.value = query
+        viewModelScope.launch {
+            _imageState.value = ApiState.SearchingDestination
+            _searchingDestination.value = false
+            _queryDestination.debounce(2400)
+                .filter { query ->
+                    if (query.text.isEmpty() && !_isChecking.value) {
+                        _queryDestination.value = TextFieldValue("")
+                        return@filter false
+                    } else {
+                        return@filter true
+                    }
+                }
+                .filter {
+                    return@filter _imageState.value !is ApiState.ReceivedPhoto
+                }
+                .onStart {
+                    _isChecking.emit(true) // Set API request status to true
+                }
+                .distinctUntilChanged()
+                .flatMapLatest { query ->
+                    dataFromNetwork(query.text)
+                        .catch {
+                            emitAll(flowOf(""))
+                        }
+                        .onCompletion {
+                            _isChecking.emit(false) // Set API request status to false on completion
+                        }
+                }
+                .flowOn(Dispatchers.Default)
+                .collect { result ->
+                    if (result.isNotEmpty()) {
+                        getAutoComplete(result)
+                        _imageState.value = ApiState.NotStarted
+                        _searchingDestination.value = true
                     }
                 }
 
@@ -120,9 +186,26 @@ class MapsSearchViewModel @Inject constructor(
             _address.value = _addresses.value[index]
             latitude.value = _addresses.value[index].latitude
             longitude.value = _addresses.value[index].longitude
+            sourcePoint.value = Point.fromLngLat(longitude.value, latitude.value)
             _addresses.value = listOf()
+            _query.value = TextFieldValue(_addresses.value[index].formattedAddress ?: "")
         } catch (e: Exception) {
             _query.value = TextFieldValue("")
+            _addresses.value = listOf()
+            e.printStackTrace()
+        }
+    }
+
+    fun searchDestination(index: Int) {
+        try {
+            _address.value = _addresses.value[index]
+            latitude.value = _addresses.value[index].latitude
+            longitude.value = _addresses.value[index].longitude
+            destinationPoint.value = Point.fromLngLat(longitude.value, latitude.value)
+            _addresses.value = listOf()
+            _queryDestination.value = TextFieldValue(_addresses.value[index].formattedAddress ?: "")
+        } catch (e: Exception) {
+            _queryDestination.value = TextFieldValue("")
             _addresses.value = listOf()
             e.printStackTrace()
         }
@@ -173,15 +256,12 @@ class MapsSearchViewModel @Inject constructor(
 
 
 sealed class ApiState {
-    object Loading : ApiState()
-
-    data class Error(val exception: Exception) : ApiState()
 
     object NotStarted : ApiState()
-    object ReceivedGeoCodes : ApiState()
-    object ReceivedPlaceId : ApiState()
-    object ReceivedPhotoId : ApiState()
-    object CalculatedDistance : ApiState()
+
+    object SearchingSource: ApiState()
+
+    object SearchingDestination: ApiState()
 
     object ReceivedPhoto : ApiState()
 }

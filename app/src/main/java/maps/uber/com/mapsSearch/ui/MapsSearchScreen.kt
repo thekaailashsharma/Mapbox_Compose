@@ -38,6 +38,9 @@ import maps.uber.com.ui.theme.lightText
 @Composable
 fun MapsSearchScreen(viewModel: MapsSearchViewModel, navController: NavController) {
     val query = viewModel.query.collectAsState()
+    val searchingSource = viewModel.searchingSource.collectAsState()
+    val searchingDestination = viewModel.searchingDestination.collectAsState()
+    val destination = viewModel.queryDestination.collectAsState()
     val imageState = viewModel.imageState.collectAsState()
     println("Image State: ${imageState.value}")
     Box(modifier = Modifier.fillMaxSize()) {
@@ -46,10 +49,13 @@ fun MapsSearchScreen(viewModel: MapsSearchViewModel, navController: NavControlle
             latitude = viewModel.latitude,
             longitude = viewModel.longitude,
             isClicked = viewModel.isClicked,
+            sourcePoint = viewModel.sourcePoint,
+            destinationPoint = viewModel.destinationPoint,
         )
 
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
             Column {
+                Spacer(modifier = Modifier.height(30.dp))
                 MapsSearchBar(
                     mutableText = query.value,
                     onValueChange = {
@@ -59,16 +65,38 @@ fun MapsSearchScreen(viewModel: MapsSearchViewModel, navController: NavControlle
                     onTrailingClick = {
                         viewModel.setQuery(TextFieldValue(""))
                     },
-                    navController = navController
+                    navController = navController,
+                    text = viewModel.source.value
                 )
-                Spacer(modifier = Modifier.height(10.dp))
                 AnimatedVisibility(
-                    visible = imageState.value !is ApiState.NotStarted && imageState.value !is ApiState.ReceivedPhoto,
+                    visible = imageState.value is ApiState.SearchingSource,
                 ) {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp),
+                            .padding(horizontal = 5.dp),
+                        color = lightText
+                    )
+                }
+                MapsSearchBar(
+                    mutableText = destination.value,
+                    onValueChange = {
+                        viewModel.setDestinationQuery(it)
+                    },
+                    viewModel = viewModel,
+                    onTrailingClick = {
+                        viewModel.setDestinationQuery(TextFieldValue(""))
+                    },
+                    navController = navController,
+                    text = viewModel.destination.value
+                )
+                AnimatedVisibility(
+                    visible = imageState.value is ApiState.SearchingDestination,
+                ) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 5.dp),
                         color = lightText
                     )
                 }
